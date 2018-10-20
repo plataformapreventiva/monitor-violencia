@@ -28,7 +28,7 @@ Tomando estas ideas en cuenta, lo que decidimos hacer es:
 
 - Por ahora, vamos a seguir buscando referencias de visualizaciones interesantes en lo que avanzamos con el análisis. Algunas que ya tenemos en mente son [Diego Valle](https://elcri.men/), [Hafen](https://github.com/hafen/geofacet) o [Flowing Data](https://flowingdata.com/category/visualization/mapping/)
 
-- Nos gustaría además reflejar tanto la varianza alrededor del fenómeno en cada municipio, como la importancia de la amenaza según la vulnerabilidad que tiene el municipio ante ella.
+- Nos gustaría además reflejar tanto la varianza alrededor del fenómeno en cada municipio, como la importancia de la amenaza según la vulnerabilidad que tiene el municipio ante ella. Una idea interesante es que el usuario pueda escoger qué ponderación le da a esa vulnerabilidad, y así ir entendiendo cómo hay amenazas que "son más importantes que otras".
 
 ## To-do (*deadline*: viernes 26 de octubre)
 
