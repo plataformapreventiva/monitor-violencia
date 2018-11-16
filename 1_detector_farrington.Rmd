@@ -1,0 +1,220 @@
+---
+title: "Prototipo para alertas de homicidio"
+output: html_notebook
+---
+
+```{r, message=FALSE, warning = FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+# Datos
+
+Fuente de datos: https://elcri.men/es/datos.html, del Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública.
+
+```{r, eval=FALSE}
+nm <- read_csv("./data/nm-fuero-comun-municipios.csv")
+nm <- nm %>% mutate(date = ymd(paste0(date, '-01')))
+tipo_homidicio <- c("FEMINICIDIO", "HOMICIDIO")
+homicidios <- nm %>% filter(tipo %in% tipo_homidicio) %>%
+    select(state_code, state, mun_code, municipio, date, count, population) %>% 
+    group_by(state_code, state, mun_code, municipio, date) %>% 
+    summarise(population = first(population), count = sum(count))
+```
+
+
+# Métodos de monitoreo: bayesiano simple
+
+Consideramos modelos que se utilizan en epidemiología.
+
+Referencia: https://cran.r-project.org/web/packages/surveillance/vignettes/surveillance.pdf
+
+En particular, consideramos el método bayesiano de la referencia anterior:
+
+```{r}
+library(surveillance)
+data(k1)
+plot(k1)
+# Evaluar de 27 a 192
+k1_surveil <- algo.bayes(k1,
+  control = list(range = 27:192, b = 0, w = 6, alpha = 0.01))
+plot(k1_surveil)
+```
+
+Para aplicar este método, primero definimos:
+
+- Valores de referencia para estimar parámetros del modelo, que son
+las observaciones pasadas de conteos de homicidios $y_i$. 
+- Región donde queremos crear predicciones, límites superiores, y detectar
+anomalías.
+
+Una vez definido, el modelo para nuevas observaciones (ver referencia) $y_k$ es
+
+- $P(y_k | \lambda)$ es Poisson con parmátro lambda
+- $\lambda$ es Gamma con parámetros $(\alpha, \beta)$.
+
+La posterior para $\lambda$ es Gamma con parámetros
+$(\alpha + \sum_i y_i, \beta + n)$, y la posterior predictiva
+es Poisson-Gamma con los mismos parámetros.
+
+Una vez que calculamos la posterior predictiva, establecemos una
+alarma si la observación $y_k$ satisface $y_k > y_\alpha$, 
+donde $y_\alpha$ es el cuantil $1- \alpha$ de la posterior predictiva.
+
+En los ejemplos siguientes, pondremos 
+
+- $\alpha = 0.02$
+- Observaciones de 6 meses anteriores para estimar parámetros, solo
+del año corriente.
+
+# Ejemplos, método bayesiano
+
+Consideramos tres municipios de Puebla:
+
+```{r}
+#puebla_edo <- filter(homicidios, state == "PUEBLA")
+puebla_edo <- readRDS("data/puebla.rds")
+puebla_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>% 
+    arrange(desc(count)) %>% 
+    filter(municipio %in% c("PUEBLA", "CHILCHOTLA", "HUAUCHINANGO"))
+```
+
+```{r}
+huauchinango <- puebla_edo %>% filter(state == "PUEBLA", municipio == "HUAUCHINANGO")
+puebla <- puebla_edo %>% filter(state == "PUEBLA", municipio == "PUEBLA")
+chilchotla <- puebla_edo %>% filter(state =="PUEBLA", municipio == "CHILCHOTLA")
+```
+
+
+```{r}
+source("./deteccion-homicidios.R")
+```
+
+```{r, warning = FALSE, fig.width=1}
+monitor_huau <- monitor(huauchinango)
+graf_monitor(monitor_huau)
+```
+
+```{r, warning = FALSE}
+monitor_huau <- monitor(huauchinango, alpha = 0.005)
+graf_monitor(monitor_huau)
+```
+
+
+```{r, warning = FALSE}
+monitor_pue <- monitor(puebla)
+graf_monitor(monitor_pue)
+```
+
+
+```{r, warning = FALSE}
+monitor_chi <- monitor(chilchotla)
+graf_monitor(monitor_chi)
+```
+
+
+# Métodos de monitoreo: Farrington
+
+En la referencia del [paquete surveillance](https://www.jstatsoft.org/article/view/v070i10) se implementan
+otros métodos:
+
+- CDC y otros: utilizan media, varianza y utilizan una aproximación normal
+simple.
+- Farrington y variaciones: similar al modelo bayesiano, pero con un modelo
+para la media que puede incluir tendencia y estacionalidad. Es el método que
+se utiliza por agencias europeas de monitoreo.
+
+Consideramos el método de Farrington, es utiliza un modelo lineal generalizado
+Poisson
+
+1. Supongamos que los valores de referencia son $y_t$
+2. Se ajusta un modelo Poisson sobredisperso a los datos de referencia,
+con
+$$E(y_t) = \mu_t, Var(y_t) = \phi \mu_t,$$
+donde $\phi$ es el parámetro de sobredispersión, y donde
+$$\log(\mu_k) = \alpha + \beta t$$ 
+sirve para modelar tendencia.
+
+3. Para considerar estacionalidad, el modelo original considera intervalos
+de tiempo alrededor de la fecha que queremos predecir junto con las semanas
+correspondientes de años anteriores. Si consideramos una ventana de $w$ datos
+de referencia y consideramos datos  $b$ años atrás, tenemos un total
+de $b(2w+1) + w $ datos de referencia.
+
+4. Para el paso de detección, usamos el método de Noufaily (2012) (ver referencia
+de paquete), donde la distribución de referencia para el nuevo valor $y_{t_0}$
+es
+$$y_{t_0}\sim NB(\mu_{t_0}, \eta)$$ 
+donde $\nu = \frac{\mu_{t_0}}{\phi - 1}$.
+
+Nota: este enfoque ignora la incertidumbre en la estimación de los parámetros
+$\mu_{t_0}$ y $\phi$.
+
+
+```{r, warning = FALSE}
+monitor_huau <- monitor_farrington(huauchinango, periods = 10)
+graf_monitor(monitor_huau)
+```
+
+```{r, warning = FALSE}
+monitor_puebla <- monitor_farrington(puebla, periods = 10)
+graf_monitor(monitor_puebla)
+```
+
+
+
+```{r, warning = FALSE}
+monitor_chi <- monitor_farrington(chilchotla, alpha = 0.02, periods = 10)
+graf_monitor(monitor_chi)
+```
+
+En este último ejemplo, notamos que el método produce estimación degenerada
+(colapsada en 0). Esto no sucede con el método bayesiano.
+
+# Métodos de monitoreo: Mezcla de Farrington-bayesiano
+
+Idealmente podría implementarse el método Farrington desde el punto de vista
+bayesiano. Una alternativa es utilizar el método de Farrington, excepto
+cuando la posterior está colapsada en 0 - entonces recaemos en el método
+bayesiano simple.
+
+
+```{r, warning = FALSE}
+monitor_huau <- monitor_mixto(huauchinango, periods = 10)
+graf_monitor(monitor_huau)
+```
+
+```{r, warning = FALSE}
+monitor_puebla <- monitor_mixto(puebla, periods = 10)
+graf_monitor(monitor_puebla)
+```
+
+
+
+```{r, warning = FALSE}
+monitor_chi <- monitor_mixto(chilchotla, alpha = 0.02, periods = 10)
+graf_monitor(monitor_chi)
+```
+
+# Otros ejemplos
+
+```{r}
+#puebla_edo <- filter(homicidios, state == "PUEBLA")
+sinaloa_edo <- readRDS("data/sinaloa.rds")
+sinaloa_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>% 
+    arrange(desc(count)) 
+```
+
+```{r, warning = FALSE, fig.width = 6, fig.height = 10}
+mun_sinaloa <- unique(sinaloa_edo$municipio)
+dat_sinaloa <- sinaloa_edo %>% split(.$municipio) 
+monitores_sinaloa <- 
+    lapply(dat_sinaloa, function(df){
+        monitor_mun <- monitor_mixto(df, alpha = 0.02, periods = 5)
+        g <- graf_monitor(monitor_mun)
+        g
+    })
+library(gridExtra)
+marrangeGrob(monitores_sinaloa, nrow = 6, ncol = 3)
+```
+
