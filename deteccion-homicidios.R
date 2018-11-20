@@ -32,10 +32,11 @@ monitor_farrington <- function(hom_df, periods = 10, alpha = 0.02){
         as("sts") # %>% sts2disProg
     
     monitor_surv <- farringtonFlexible(obs_dprog, 
-                    control = list(range = range, b = 2, w = 3, 
+                    control = list(range = range, b = 2, w = 4, 
                                    powertrans = "none", alpha = alpha,
+                                   limit54 = c(5, 3),
                                    thresholdMethod="nbPlugin",
-                                   reweight = FALSE,
+                                   reweight = TRUE,
                                    pastWeeksNotIncluded = 0, verbose = FALSE))
     hom_df$alarm <- NA
     hom_df$upper_bound <- NA

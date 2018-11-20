@@ -1,6 +1,9 @@
 ---
 title: "Prototipo para alertas de homicidio"
 output: html_notebook
+bibliography: bibliography.bib
+nocite: |
+    @Yang2018, @surveillance, 
 ---
 
 ```{r, message=FALSE, warning = FALSE}
@@ -124,7 +127,7 @@ simple.
 para la media que puede incluir tendencia y estacionalidad. Es el método que
 se utiliza por agencias europeas de monitoreo.
 
-Consideramos el método de Farrington, es utiliza un modelo lineal generalizado
+Consideramos el método de Farrington (mejorado, ), es utiliza un modelo lineal generalizado
 Poisson
 
 1. Supongamos que los valores de referencia son $y_t$
@@ -135,20 +138,26 @@ donde $\phi$ es el parámetro de sobredispersión, y donde
 $$\log(\mu_k) = \alpha + \beta t$$ 
 sirve para modelar tendencia.
 
-3. Para considerar estacionalidad, el modelo original considera intervalos
-de tiempo alrededor de la fecha que queremos predecir junto con las semanas
-correspondientes de años anteriores. Si consideramos una ventana de $w$ datos
-de referencia y consideramos datos  $b$ años atrás, tenemos un total
-de $b(2w+1) + w $ datos de referencia.
+3. Se calculan pesos para los datos, reduciendo el peso de *outliers* según
+la distribución obtenida de los datos de referencia.
 
-4. Para el paso de detección, usamos el método de Noufaily (2012) (ver referencia
+4. Se reajusta el modelo con los pesos calculados en el paso anterior
+
+5. Para el paso de detección, usamos el método de Noufaily (2012) (ver referencia
 de paquete), donde la distribución de referencia para el nuevo valor $y_{t_0}$
 es
 $$y_{t_0}\sim NB(\mu_{t_0}, \eta)$$ 
 donde $\nu = \frac{\mu_{t_0}}{\phi - 1}$.
 
-Nota: este enfoque ignora la incertidumbre en la estimación de los parámetros
+Notas: 
+
+- Este enfoque ignora la incertidumbre en la estimación de los parámetros
 $\mu_{t_0}$ y $\phi$.
+- Para declarar una anomalía, se requieren también al menos 5 casos en los últimos 
+3 meses (incluyendo el mes que se está evaluando).
+
+6. Utilizamos 4 meses alrededor de del valor que queremos predecir, considerando
+dos años atrás (para un total de 2 + 2(4) + 1 = 11 datos de referencia).
 
 
 ```{r, warning = FALSE}
@@ -168,53 +177,94 @@ monitor_chi <- monitor_farrington(chilchotla, alpha = 0.02, periods = 10)
 graf_monitor(monitor_chi)
 ```
 
-En este último ejemplo, notamos que el método produce estimación degenerada
-(colapsada en 0). Esto no sucede con el método bayesiano.
-
-# Métodos de monitoreo: Mezcla de Farrington-bayesiano
-
-Idealmente podría implementarse el método Farrington desde el punto de vista
-bayesiano. Una alternativa es utilizar el método de Farrington, excepto
-cuando la posterior está colapsada en 0 - entonces recaemos en el método
-bayesiano simple.
-
-
-```{r, warning = FALSE}
-monitor_huau <- monitor_mixto(huauchinango, periods = 10)
-graf_monitor(monitor_huau)
-```
-
-```{r, warning = FALSE}
-monitor_puebla <- monitor_mixto(puebla, periods = 10)
-graf_monitor(monitor_puebla)
-```
 
 
 
-```{r, warning = FALSE}
-monitor_chi <- monitor_mixto(chilchotla, alpha = 0.02, periods = 10)
-graf_monitor(monitor_chi)
-```
+
 
 # Otros ejemplos
 
 ```{r}
-#puebla_edo <- filter(homicidios, state == "PUEBLA")
+#sinaloa_edo <- filter(homicidios, state == "SINALOA")
 sinaloa_edo <- readRDS("data/sinaloa.rds")
 sinaloa_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>% 
     arrange(desc(count)) 
 ```
 
 ```{r, warning = FALSE, fig.width = 6, fig.height = 10}
-mun_sinaloa <- unique(sinaloa_edo$municipio)
 dat_sinaloa <- sinaloa_edo %>% split(.$municipio) 
 monitores_sinaloa <- 
     lapply(dat_sinaloa, function(df){
-        monitor_mun <- monitor_mixto(df, alpha = 0.02, periods = 5)
+        monitor_mun <- monitor_farrington(df, alpha = 0.02, periods = 5)
         g <- graf_monitor(monitor_mun)
         g
     })
 library(gridExtra)
 marrangeGrob(monitores_sinaloa, nrow = 6, ncol = 3)
 ```
+
+```{r}
+mex_edo <- filter(homicidios, state == "MICHOACÁN")
+#sinaloa_edo <- readRDS("data/sinaloa.rds")
+mex_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>% 
+    arrange(desc(count)) 
+```
+
+```{r, warning = FALSE, fig.width = 6, fig.height = 10}
+dat_mex <- mex_edo %>% split(.$municipio) 
+monitores_mex <- 
+    lapply(dat_mex, function(df){
+        monitor_mun <- monitor_farrington(df, alpha = 0.02, periods = 5)
+        g <- graf_monitor(monitor_mun)
+        list(graf = g, monitor = monitor_mun)
+    })
+```
+
+```{r}
+tiene_alarma <- function(monitor){
+    any(monitor$monitor$data$alarm == 1)
+}
+monitores_alarma <- keep(monitores_mex, tiene_alarma)
+```
+
+```{r, fig.width = 6, fig.height = 10}
+graficas <- monitores_alarma %>% map(~.$graf)
+marrangeGrob(graficas, nrow = 4, ncol = 3)
+```
+
+
+
+```{r}
+mex_edo <- filter(homicidios, state == "VERACRUZ")
+#sinaloa_edo <- readRDS("data/sinaloa.rds")
+mex_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>% 
+    arrange(desc(count)) 
+```
+
+```{r, warning = FALSE, fig.width = 6, fig.height = 10}
+dat_mex <- mex_edo %>% split(.$municipio) 
+monitores_mex <- 
+    lapply(dat_mex, function(df){
+        monitor_mun <- monitor_farrington(df, alpha = 0.02, periods = 5)
+        g <- graf_monitor(monitor_mun)
+        list(graf = g, monitor = monitor_mun)
+    })
+```
+
+```{r}
+tiene_alarma <- function(monitor){
+    any(monitor$monitor$data$alarm == 1)
+}
+monitores_alarma <- keep(monitores_mex, tiene_alarma)
+```
+
+```{r, fig.width = 6, fig.height = 10}
+graficas <- monitores_alarma %>% map(~.$graf)
+marrangeGrob(graficas, nrow = 4, ncol = 3)
+```
+
+
+
+# References
+
 
