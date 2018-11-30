@@ -9,14 +9,15 @@ nocite: |
 ```{r, message=FALSE, warning = FALSE}
 library(tidyverse)
 library(lubridate)
+library(surveillance)
 ```
 
 # Datos
 
 Fuente de datos: https://elcri.men/es/datos.html, del Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública.
 
-```{r, eval=FALSE}
-nm <- read_csv("./data/nm-fuero-comun-municipios.csv")
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+nm <- read_csv("./data/nm-fuero-comun-municipios.csv", progress = FALSE)
 nm <- nm %>% mutate(date = ymd(paste0(date, '-01')))
 tipo_homidicio <- c("FEMINICIDIO", "HOMICIDIO")
 homicidios <- nm %>% filter(tipo %in% tipo_homidicio) %>%
@@ -35,7 +36,6 @@ Referencia: https://cran.r-project.org/web/packages/surveillance/vignettes/surve
 En particular, consideramos el método bayesiano de la referencia anterior:
 
 ```{r}
-library(surveillance)
 data(k1)
 plot(k1)
 # Evaluar de 27 a 192
@@ -93,25 +93,31 @@ chilchotla <- puebla_edo %>% filter(state =="PUEBLA", municipio == "CHILCHOTLA")
 source("./deteccion-homicidios.R")
 ```
 
-```{r, warning = FALSE, fig.width=1}
-monitor_huau <- monitor(huauchinango)
+```{r, warning = FALSE}
+monitor_huau <- monitor_bayes(huauchinango)
 graf_monitor(monitor_huau)
 ```
 
+```{r}
+monitor_huau$data %>% tail
+```
+
+
+
 ```{r, warning = FALSE}
-monitor_huau <- monitor(huauchinango, alpha = 0.005)
+monitor_huau <- monitor_bayes(huauchinango, alpha = 0.005)
 graf_monitor(monitor_huau)
 ```
 
 
 ```{r, warning = FALSE}
-monitor_pue <- monitor(puebla)
+monitor_pue <- monitor_bayes(puebla)
 graf_monitor(monitor_pue)
 ```
 
 
 ```{r, warning = FALSE}
-monitor_chi <- monitor(chilchotla)
+monitor_chi <- monitor_bayes(chilchotla)
 graf_monitor(monitor_chi)
 ```
 
@@ -147,27 +153,31 @@ la distribución obtenida de los datos de referencia.
 de paquete), donde la distribución de referencia para el nuevo valor $y_{t_0}$
 es
 $$y_{t_0}\sim NB(\mu_{t_0}, \eta)$$ 
-donde $\nu = \frac{\mu_{t_0}}{\phi - 1}$.
+donde $\eta= \frac{\mu_{t_0}}{\phi - 1}$.
 
 Notas: 
 
 - Este enfoque ignora la incertidumbre en la estimación de los parámetros
 $\mu_{t_0}$ y $\phi$.
-- Para declarar una anomalía, se requieren también al menos 5 casos en los últimos 
-3 meses (incluyendo el mes que se está evaluando).
+- Para declarar una anomalía, se requieren también al menos 5 casos en los últimos 3 meses (incluyendo el mes que se está evaluando).
 
 6. Utilizamos 4 meses alrededor de del valor que queremos predecir, considerando
 dos años atrás (para un total de 2 + 2(4) + 1 = 11 datos de referencia).
 
 
 ```{r, warning = FALSE}
-monitor_huau <- monitor_farrington(huauchinango, periods = 10)
+monitor_huau <- monitor_farrington(huauchinango, alpha=0.05, periods = 1)
 graf_monitor(monitor_huau)
 ```
 
+
+```{r}
+monitor_huau$data %>%  tail
+```
+
+
 ```{r, warning = FALSE}
 monitor_puebla <- monitor_farrington(puebla, periods = 10)
-graf_monitor(monitor_puebla)
 ```
 
 
@@ -191,7 +201,7 @@ sinaloa_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>%
     arrange(desc(count)) 
 ```
 
-```{r, warning = FALSE, fig.width = 6, fig.height = 10}
+```{r, warning = FALSE, fig.keep=FALSE}
 dat_sinaloa <- sinaloa_edo %>% split(.$municipio) 
 monitores_sinaloa <- 
     lapply(dat_sinaloa, function(df){
@@ -199,6 +209,9 @@ monitores_sinaloa <-
         g <- graf_monitor(monitor_mun)
         g
     })
+```
+
+```{r, fig.width = 6, fig.height = 10, warning = FALSE}
 library(gridExtra)
 marrangeGrob(monitores_sinaloa, nrow = 6, ncol = 3)
 ```
@@ -221,10 +234,10 @@ monitores_mex <-
 ```
 
 ```{r}
-tiene_alarma <- function(monitor){
-    any(monitor$monitor$data$alarm == 1)
+tiene_alerta <- function(monitor){
+    any(monitor$monitor$data$alerta == 1)
 }
-monitores_alarma <- keep(monitores_mex, tiene_alarma)
+monitores_alarma <- keep(monitores_mex, tiene_alerta)
 ```
 
 ```{r, fig.width = 6, fig.height = 10}
@@ -252,10 +265,10 @@ monitores_mex <-
 ```
 
 ```{r}
-tiene_alarma <- function(monitor){
-    any(monitor$monitor$data$alarm == 1)
+tiene_alerta <- function(monitor){
+    any(monitor$monitor$data$alerta == 1)
 }
-monitores_alarma <- keep(monitores_mex, tiene_alarma)
+monitores_alarma <- keep(monitores_mex, tiene_alerta)
 ```
 
 ```{r, fig.width = 6, fig.height = 10}
@@ -264,6 +277,41 @@ marrangeGrob(graficas, nrow = 4, ncol = 3)
 ```
 
 
+# Ejemplo: alertas de septiembre
+
+```{r}
+dat_nal <- homicidios %>% split(list(.$municipio, .$state), drop = TRUE) 
+length(dat_nal)
+
+monitores_nal <- 
+    lapply(dat_nal, function(df){
+        # farrington por default, a menos que haya menos de 2 años de datos
+        # o no converja.
+        monitor_mun <- monitor(df, alpha = 0.05, periods = 1)
+        #g <- graf_monitor(monitor_mun)
+        #list(graf = g, monitor = monitor_mun)
+        monitor_mun
+    })
+tipos <- sapply(monitores_nal, function(monitor){ monitor$tipo })
+table(tipos)
+```
+
+Alertas
+```{r}
+alertas <- sapply(monitores_nal, function(monitor){ 
+    any(monitor$data$alerta, na.rm = TRUE) }
+    )
+table(alertas)
+alertas_mun <- which(alertas)
+alertas_mun
+```
+
+
+```{r, warning = FALSE}
+for(i in 1:length(alertas_mun)){
+    print(graf_monitor(monitores_nal[[alertas_mun[i]]]))
+}
+```
 
 # References
 
