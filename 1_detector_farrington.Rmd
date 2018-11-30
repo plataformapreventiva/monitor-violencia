@@ -277,7 +277,19 @@ marrangeGrob(graficas, nrow = 4, ncol = 3)
 ```
 
 
-# Ejemplo: alertas de septiembre
+# Alertas para último mes
+
+Para hacer rangos y alertas sobre todos los municipios, usamos un algoritmo
+mixto:
+
+- Aplicamos primero el método Farrington flexible. 
+Si el algoritmo converge, y hay suficientes
+datos (dos años atrás), utilizamos su salida.
+- En otro caso, utilizamos el método bayesiano simple
+    aplicado a los últimos 6 meses de datos.
+    
+Si hay suficientes datos hacia atrás, Farrington puede fallar
+cuando observamos conteos muy bajos (proporción alta de ceros).    
 
 ```{r}
 dat_nal <- homicidios %>% split(list(.$municipio, .$state), drop = TRUE) 
@@ -296,7 +308,22 @@ tipos <- sapply(monitores_nal, function(monitor){ monitor$tipo })
 table(tipos)
 ```
 
+En la siguiente tabla mostramos que cuando hay menos de un año de datos,
+se utiliza siempre bayes simple. El de Farrington se utiliza en la mayor
+parte de los casos cuando hay más de un año de datos, excepto en algunos
+casos de conteo bajo donde no converge apropiadamente.
+
+```{r}
+conteos_bajo <- sapply(monitores_nal, function(monitor){ sum(tail(monitor$data$count,6)) < 5})
+menos_1_año <- sapply(monitores_nal, function(monitor){ length(monitor$data$count) < 24})
+data_frame(conteo_bajo = conteos_bajo, menos_1_año = menos_1_año, tipo = tipos) %>% 
+    group_by(menos_1_año, conteo_bajo, tipo) %>% tally() %>% spread(tipo, n)
+```
+
+
+
 Alertas
+
 ```{r}
 alertas <- sapply(monitores_nal, function(monitor){ 
     any(monitor$data$alerta, na.rm = TRUE) }
