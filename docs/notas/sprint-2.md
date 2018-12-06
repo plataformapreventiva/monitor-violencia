@@ -2,6 +2,7 @@
 Sprint: 02
 Fecha: 06/12/2018
 
+
 ## Visualización
 
 Empezamos el sprint revisando una [primera versión](https://drive.google.com/open?id=118IHShr2OyHHpQJXnHIARcoT2DuGCmDP). A partir de esa primera versión, llegamos algunos acuerdos:
@@ -20,6 +21,7 @@ La tabla que relaciona las alertas, el perfil de riesgo/vulnerabilidad y la pol�
 
     3. Un detalle adicional: subir el texto de abajo del mapa como un header que lo explique.
 
+[pre_mockup](https://docs.google.com/presentation/d/1-B0x2-8vXSQtU0fZvKG8XpjPb5TSDN27wyABaWiAt1E/edit?usp=sharing)
 
 ## Modelado
 
@@ -30,4 +32,3 @@ La tabla que relaciona las alertas, el perfil de riesgo/vulnerabilidad y la pol�
     2. Sobreponer la serie de INEGI como contexto, pero sin hacer ningún ajuste adicional.
 
   * Vamos a correr el modelo para los niveles de *alpha* = [0.1, 0.05, 0.02, 0.01]
-
