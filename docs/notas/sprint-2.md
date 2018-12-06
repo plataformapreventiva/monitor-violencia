@@ -16,18 +16,18 @@ La tabla que relaciona las alertas, el perfil de riesgo/vulnerabilidad y la pol�
 
     1. [El ejemplo de Felipe](https://sedesol-lab.slack.com/files/U9GJ1AJMU/FEMCAJPKN/ejemplo_csi.png), en el que el texto está claramente relacionado con las gráficas. Otra cosa que nos gusta mucho de acá es explorar un tooltip más evidente que permita explicar mejor la visualización.
 
-      2. [El ejemplo de Eward Tufte](https://www.edwardtufte.com/bboard/q-and-a-fetch-msg?msg_id=0003mm). Acá lo que nos gusta es cómo el texto sirve para explicar bien la visualización, sin tener mucho protagonismo de color o tamaño. También nos gusta mucho esa gráfica de barras como header. Proponemos usar ya sea el total de alertas por año (nacional/estatal) o el total para cada estado/municipio.
+    2. [El ejemplo de Eward Tufte](https://www.edwardtufte.com/bboard/q-and-a-fetch-msg?msg_id=0003mm). Acá lo que nos gusta es cómo el texto sirve para explicar bien la visualización, sin tener mucho protagonismo de color o tamaño. También nos gusta mucho esa gráfica de barras como header. Proponemos usar ya sea el total de alertas por año (nacional/estatal) o el total para cada estado/municipio.
 
-3. Un detalle adicional: subir el texto de abajo del mapa como un header que lo explique.
+    3. Un detalle adicional: subir el texto de abajo del mapa como un header que lo explique.
 
 
 ## Modelado
 
   * Sobre la posibilidad de ajustar la serie del SENSP a la de INEGI, consideramos que lejos de ayudar puede ser más confuso presentar una tercera cifra de homicidios. Además, en general el margen que tiene la segunda sobre la primera se mantiene constante, y lo que estamos analizando son los patrones, no los niveles. Acordamos dejar el modelo sólo con los datos del SENSP, con dos detalles:
 
-1. Meter un disclaimer sobre cómo los datos del Secretariado subestiman las cuentas de homicidios.
+    1. Meter un disclaimer sobre cómo los datos del Secretariado subestiman las cuentas de homicidios.
 
-2. Sobreponer la serie de INEGI como contexto, pero sin hacer ningún ajuste adicional.
+    2. Sobreponer la serie de INEGI como contexto, pero sin hacer ningún ajuste adicional.
 
   * Vamos a correr el modelo para los niveles de *alpha* = [0.1, 0.05, 0.02, 0.01]
 
