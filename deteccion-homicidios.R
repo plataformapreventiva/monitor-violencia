@@ -16,19 +16,28 @@ monitor_bayes <- function(hom_df, periods = 10, alpha = 0.02, b = 0, w = 6){
     obs_dprog <- ts(observed, start = start, frequency = 12) %>% 
         as("sts") %>% sts2disProg
     
-    monitor_surv <- algo.bayes(obs_dprog, 
-                               control = list(range = range, b = b, w = w, 
+    tryCatch({
+      monitor_surv <- algo.bayes(obs_dprog, 
+                                control = list(range = range, b = b, w = w, 
                                               alpha = alpha))
-    hom_df$alerta <- NA
-    hom_df$alerta_nivel <- NA
-    hom_df$alerta[range] <- as.logical(monitor_surv$alarm)
-    hom_df$alerta_nivel[range] <- monitor_surv$upperbound
-    metadata <- list(tipo= 'bayes', alpha = alpha, b = b, w = w,
-                     periods = periods,
-                     hash_model = digest::digest(monitor_surv, algo = 'md5')) %>% 
+      hom_df$alerta <- NA
+      hom_df$alerta_nivel <- NA
+      hom_df$alerta[range] <- as.logical(monitor_surv$alarm)
+      hom_df$alerta_nivel[range] <- monitor_surv$upperbound
+      metadata <- list(tipo= 'bayes', alpha = alpha, b = b, w = w,
+                       periods = periods,
+                       hash_model = digest::digest(monitor_surv, algo = 'md5')) %>% 
         jsonlite::toJSON(auto_unbox = TRUE)
-    hom_df$metadata <- metadata
-    list(monitor = monitor_surv, data = hom_df, tipo = 'bayes')
+      hom_df$metadata <- metadata
+      list(monitor = monitor_surv, data = hom_df, tipo = 'bayes')
+    }, 
+    error = function(e) {
+      hom_df$alerta <- NA
+      hom_df$alerta_nivel <- NA
+      hom_df$metadata <- NA
+      list(monitor = NULL, data = hom_df, tipo = 'ninguno')
+    }
+    )
 }
 
 monitor_farrington <- function(hom_df, periods = 10, alpha = 0.02, b = 2, 
@@ -76,7 +85,7 @@ monitor <- function(hom_df, periods = 10, alpha = 0.02, b = 2, w = 4) {
 }
 graf_monitor <- function(monitor){
     data <- monitor$data
-    state <- first(data$state) %>% simple_cap
+    state <- first(data$entidad) %>% simple_cap
     mun <- first(data$municipio) %>% simple_cap
     valores_alerta <- unique(data$alerta[!is.na(data$alerta)])
     colores <- "black"
@@ -101,7 +110,7 @@ graf_monitor <- function(monitor){
         labs(subtitle = paste("Método:", monitor$tipo))
     if(max(data$alerta, na.rm = TRUE) == 1){
         graf <- graf + geom_point(aes(y = count, colour = factor(alerta), 
-                                      size=as.numeric(alerta))) 
+                                      size=as.numeric(alerta)))
     } else {
         graf <- graf + geom_point(aes(y = count, colour = factor(alerta)))
     }
