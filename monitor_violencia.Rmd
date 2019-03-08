@@ -1,10 +1,56 @@
 ---
-title: "Prototipo para alertas de homicidio"
-output: html_notebook
+title: "Modelos para la implementación de monitoreo de homicidios"
+author: "Felipe González"
+date: Diciembre, 2018
+output: 
+    pdf_document:
+        toc: true
+        number_sections: true
+        toc_depth: 2
+    html_document:
+        toc: true
+        toc_depth: 2
+        number_sections: true
 bibliography: bibliography.bib
 nocite: |
-    @Yang2018, @surveillance, 
+    @Yang2018, @surveillance, @SESNSP, @DValle, @envipe
 ---
+
+# Introducción
+
+En este documento mostramos fundamentos y ejemplos de implementación de un sistema
+de monitoreo de violencia en México basado en los datos de homicidios a nivel municipal
+provistos
+por el Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública ([@SESNSP]).
+
+**El objetivo es producir un detector de anomalías (datos inusualmente altos en incidencia)
+de los datos reportados, con el fin de enfocar el análisis a acciones
+a municipios de interés**.
+Esos municipios de interés deberán ser identificados por reportes inusualmente
+altos de incidencia de homicidio, en contraste a aquellos municipios donde los
+datos reportados tengan variación consistente con la que se ha observado históricamente.
+
+Aunque el interés general es medición de violencia, la decisión de utilizar 
+solamente los datos de homicidios (homicidios más feminicidios según la nueva 
+metodología de la SESNSP) se debe a que otros tipos de crímenes violentos
+tienden a tener niveles altos de cifra negra -- alrededor de 90\% o más según
+la [Encuesta de Victimización del INEGI](https://www.inegi.org.mx/programas/envipe/2018/),
+mientras que esto sucede en mucho menor grado con homicidios. Otras indicadores
+de crimen con cifra negra relativamente baja son el robo de automóvil, por ejemplo,
+pero consideramos que este no necesariamente refleja el interés en medir la violencia
+que experimenta la población en cada municipio.
+
+
+# Datos
+ 
+ Usamos los datos de homicidios y feminicidios a nivel municipal provistos
+por el Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública ([@SESNSP]).
+Estos datos son publicados cada mes.
+
+Otra fuente de este tipo de datos son los reportados por INEGI, que se consideran
+más completos y precisos. Los datos de INEGI, sin embargo, son publicados con
+retraso de un año, lo que los descalifica para un sistema de monitoreo que pretende
+evaluar la situación actual de los municipios. 
 
 ```{r, message=FALSE, warning = FALSE}
 library(tidyverse)
@@ -12,9 +58,9 @@ library(lubridate)
 library(surveillance)
 ```
 
-# Datos
-
-Fuente de datos: https://elcri.men/es/datos.html, del Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública.
+El archivo de datos que utilizamos es preprocesado de los datos crudos
+según el código de [https://github.com/diegovalle/new.crimenmexico](https://github.com/diegovalle/new.crimenmexico),
+a partir de los datos del Secretariado Ejecutivo del Sistema Nacional de Seguridad Pública.
 
 ```{r, eval=TRUE, message=FALSE, warning=FALSE}
 nm <- read_csv("./data/nm-fuero-comun-municipios.csv", progress = FALSE)
@@ -26,14 +72,37 @@ homicidios <- nm %>% filter(tipo %in% tipo_homidicio) %>%
     summarise(population = first(population), count = sum(count))
 ```
 
+# Metodología
+
+Consideramos que el enfoque apropiado para constuir monitores de violencia
+es el adoptado en la epidemiología para detección de brotes de enfermedades
+infecciosas ([@farrington]). La detección temprana de estos brotes en
+una aspecto importante de sistemas de monitoreo epidemiológicos, y están
+implementados en muchos países [@farrington] con el fin de proveerlos de
+respuesta epidemiológica oportuna.
+
+Existen varias aproximaciones para los construcción de estos sistemas
+de detección temprana. Por ejemplo:
+
+- CDC y otros: utilizan media, varianza y utilizan una aproximación normal
+simple. Algunos modelos simples bayesianos son similares a este método.
+- Agencias europeas de monitoreo: método de 
+Farrington y variaciones. Similar al modelo bayesiano, pero con un modelo
+para la media que puede incluir tendencia y estacionalidad. 
+
+
+En este documento, examinaremos algunos de
+los que más ampliamente implementados, como algunos métodos bayesianos y
+el método de Farrington 
+[@surveillance2]. Utilizamos las implementaciones 
+del paquete de R [surveillance](https://cran.r-project.org/web/packages/surveillance/vignettes/surveillance.pdf).
 
 # Métodos de monitoreo: bayesiano simple
 
-Consideramos modelos que se utilizan en epidemiología.
-
-Referencia: https://cran.r-project.org/web/packages/surveillance/vignettes/surveillance.pdf
-
-En particular, consideramos el método bayesiano de la referencia anterior:
+Uno de los métodos más simples, de desempeño competitivo ([@Yang2018]) utiliza
+un enfoque parcialmente bayesiano construido a partir de una regresión Poisson
+con sobredispersión. Este es un ejemplo típico utilizado en la detección de
+brotes de *Kryptosporidiose* en Alemania [@surveillance]:
 
 ```{r}
 data(k1)
@@ -51,12 +120,13 @@ las observaciones pasadas de conteos de homicidios $y_i$.
 - Región donde queremos crear predicciones, límites superiores, y detectar
 anomalías.
 
-Una vez definido, el modelo para nuevas observaciones (ver referencia) $y_k$ es
+Una vez definida la ventana de valores de referencia y horizonte de
+predicción, el modelo para nuevas observaciones (ver referencia) $y_k$ es
 
 - $P(y_k | \lambda)$ es Poisson con parmátro lambda
 - $\lambda$ es Gamma con parámetros $(\alpha, \beta)$.
 
-La posterior para $\lambda$ es Gamma con parámetros
+De forma que la posterior para $\lambda$ es Gamma con parámetros
 $(\alpha + \sum_i y_i, \beta + n)$, y la posterior predictiva
 es Poisson-Gamma con los mismos parámetros.
 
@@ -70,7 +140,7 @@ En los ejemplos siguientes, pondremos
 - Observaciones de 6 meses anteriores para estimar parámetros, solo
 del año corriente.
 
-# Ejemplos, método bayesiano
+### Ejemplos: método bayesiano.
 
 Consideramos tres municipios de Puebla:
 
@@ -94,7 +164,7 @@ source("./deteccion-homicidios.R")
 ```
 
 ```{r, warning = FALSE}
-monitor_huau <- monitor_bayes(huauchinango)
+monitor_huau <- monitor_bayes(huauchinango, alpha = 0.05)
 graf_monitor(monitor_huau)
 ```
 
@@ -104,37 +174,25 @@ monitor_huau$data %>% tail
 
 
 
-```{r, warning = FALSE}
-monitor_huau <- monitor_bayes(huauchinango, alpha = 0.005)
-graf_monitor(monitor_huau)
-```
+
 
 
 ```{r, warning = FALSE}
-monitor_pue <- monitor_bayes(puebla)
+monitor_pue <- monitor_bayes(puebla, alpha = 0.05)
 graf_monitor(monitor_pue)
 ```
 
 
 ```{r, warning = FALSE}
-monitor_chi <- monitor_bayes(chilchotla)
+monitor_chi <- monitor_bayes(chilchotla, alpha = 0.05)
 graf_monitor(monitor_chi)
 ```
 
 
 # Métodos de monitoreo: Farrington
 
-En la referencia del [paquete surveillance](https://www.jstatsoft.org/article/view/v070i10) se implementan
-otros métodos:
-
-- CDC y otros: utilizan media, varianza y utilizan una aproximación normal
-simple.
-- Farrington y variaciones: similar al modelo bayesiano, pero con un modelo
-para la media que puede incluir tendencia y estacionalidad. Es el método que
-se utiliza por agencias europeas de monitoreo.
-
-Consideramos el método de Farrington (mejorado, ), es utiliza un modelo lineal generalizado
-Poisson
+Consideramos ahora el método de Farrington (mejorado), que utiliza un modelo lineal generalizado
+Poisson:
 
 1. Supongamos que los valores de referencia son $y_t$
 2. Se ajusta un modelo Poisson sobredisperso a los datos de referencia,
@@ -164,9 +222,11 @@ $\mu_{t_0}$ y $\phi$.
 6. Utilizamos 4 meses alrededor de del valor que queremos predecir, considerando
 dos años atrás (para un total de 2 + 2(4) + 1 = 11 datos de referencia).
 
+### Ejemplos: método de Farrington mejorado
+
 
 ```{r, warning = FALSE}
-monitor_huau <- monitor_farrington(huauchinango, alpha=0.05, periods = 1)
+monitor_huau <- monitor_farrington(huauchinango, alpha=0.05, periods = 10)
 graf_monitor(monitor_huau)
 ```
 
@@ -176,23 +236,31 @@ monitor_huau$data %>%  tail
 ```
 
 
+
+```{r}
+monitor_pue <- monitor_farrington(puebla, alpha=0.05, periods = 10)
+graf_monitor(monitor_pue)
+```
+
 ```{r, warning = FALSE}
 monitor_puebla <- monitor_farrington(puebla, periods = 10)
 ```
 
-
+Nótese que las bandas en la estimación de Farrington puede colapsarse para municipios
+con niveles bajos de homicidios:
 
 ```{r, warning = FALSE}
-monitor_chi <- monitor_farrington(chilchotla, alpha = 0.02, periods = 10)
+monitor_chi <- monitor_farrington(chilchotla, alpha = 0.05, periods = 10)
 graf_monitor(monitor_chi)
 ```
 
 
 
-
-
-
 # Otros ejemplos
+
+En Sinaloa, por ejemplo, no observamos ninguna alarma reciente. Aún
+cuando algunas tasas de homicidio son muy altas en todo el periodo
+de referencia/evaluación, no se detectan brotes recientes:
 
 ```{r}
 #sinaloa_edo <- filter(homicidios, state == "SINALOA")
@@ -201,7 +269,7 @@ sinaloa_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>%
     arrange(desc(count)) 
 ```
 
-```{r, warning = FALSE, fig.keep=FALSE}
+```{r, warning = FALSE ,fig.keep=FALSE}
 dat_sinaloa <- sinaloa_edo %>% split(.$municipio) 
 monitores_sinaloa <- 
     lapply(dat_sinaloa, function(df){
@@ -216,7 +284,10 @@ library(gridExtra)
 marrangeGrob(monitores_sinaloa, nrow = 6, ncol = 3)
 ```
 
-```{r}
+En los siguientes ejemplos sólo mostramos los municipios con detección
+de anomalías:
+
+```{r, warning = FALSE}
 mex_edo <- filter(homicidios, state == "MICHOACÁN")
 #sinaloa_edo <- readRDS("data/sinaloa.rds")
 mex_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>% 
@@ -235,26 +306,26 @@ monitores_mex <-
 
 ```{r}
 tiene_alerta <- function(monitor){
-    any(monitor$monitor$data$alerta == 1)
+    any(monitor$monitor$data$alerta == 1, na.rm = TRUE)
 }
 monitores_alarma <- keep(monitores_mex, tiene_alerta)
 ```
 
-```{r, fig.width = 6, fig.height = 10}
+```{r, warning = FALSE, fig.width = 10, fig.height = 3}
 graficas <- monitores_alarma %>% map(~.$graf)
-marrangeGrob(graficas, nrow = 4, ncol = 3)
+marrangeGrob(graficas, nrow = 1, ncol = 4)
 ```
 
 
 
-```{r}
+```{r, warning = FALSE, fig.width = 10, fig.height = 3}
 mex_edo <- filter(homicidios, state == "VERACRUZ")
 #sinaloa_edo <- readRDS("data/sinaloa.rds")
 mex_edo %>% group_by(municipio) %>% summarise(count = sum(count)) %>% 
     arrange(desc(count)) 
 ```
 
-```{r, warning = FALSE, fig.width = 6, fig.height = 10}
+```{r, warning = FALSE, fig.width = 10, fig.height = 3}
 dat_mex <- mex_edo %>% split(.$municipio) 
 monitores_mex <- 
     lapply(dat_mex, function(df){
@@ -265,31 +336,38 @@ monitores_mex <-
 ```
 
 ```{r}
-tiene_alerta <- function(monitor){
-    any(monitor$monitor$data$alerta == 1)
-}
 monitores_alarma <- keep(monitores_mex, tiene_alerta)
 ```
 
-```{r, fig.width = 6, fig.height = 10}
+```{r, warning = FALSE, fig.width = 10, fig.height = 3}
 graficas <- monitores_alarma %>% map(~.$graf)
-marrangeGrob(graficas, nrow = 4, ncol = 3)
+marrangeGrob(graficas, nrow = 1, ncol = 4)
 ```
 
 
-# Alertas para último mes
+# Propuesta: Método mixto
 
-Para hacer rangos y alertas sobre todos los municipios, usamos un algoritmo
-mixto:
+Proponemos un método mixto para construir rango y alertas 
+para todos los municipios:
 
 - Aplicamos primero el método Farrington flexible. 
-Si el algoritmo converge, y hay suficientes
-datos (dos años atrás), utilizamos su salida.
+Si el algoritmo converge, y hay suficientes datos (dos años atrás), utilizamos su salida.
 - En otro caso, utilizamos el método bayesiano simple
     aplicado a los últimos 6 meses de datos.
     
 Si hay suficientes datos hacia atrás, Farrington puede fallar
 cuando observamos conteos muy bajos (proporción alta de ceros).    
+
+Típicamente, estos métodos se evalúan con etiquetado de brotes según expertos
+en epidemiología ([@Yang2018]). En nuestro caso, consideramos propiedades básicas
+de la estimación y comportamiento con los datos observados, pero
+ los métodos deberán ser evaluados por expertos en el tema que puedan etiquetar
+ cuáles saltos indican brotes de violencia o no. 
+
+## Método mixto para todos los municipios.
+
+Al aplicar para detección del último mes con los datos actuales
+obtenemos la siguiente proporción de uso de Farrington vs Bayesiano simple:
 
 ```{r}
 dat_nal <- homicidios %>% split(list(.$municipio, .$state), drop = TRUE) 
@@ -308,7 +386,7 @@ tipos <- sapply(monitores_nal, function(monitor){ monitor$tipo })
 table(tipos)
 ```
 
-En la siguiente tabla mostramos que cuando hay menos de un año de datos,
+Y en la siguiente tabla mostramos que cuando hay menos de un año de datos,
 se utiliza siempre bayes simple. El de Farrington se utiliza en la mayor
 parte de los casos cuando hay más de un año de datos, excepto en algunos
 casos de conteo bajo donde no converge apropiadamente.
@@ -320,9 +398,8 @@ data_frame(conteo_bajo = conteos_bajo, menos_1_año = menos_1_año, tipo = tipos
     group_by(menos_1_año, conteo_bajo, tipo) %>% tally() %>% spread(tipo, n)
 ```
 
+El número de alertas generadas para este último mes, los municipios afectados:
 
-
-Alertas
 
 ```{r}
 alertas <- sapply(monitores_nal, function(monitor){ 
@@ -333,12 +410,15 @@ alertas_mun <- which(alertas)
 alertas_mun
 ```
 
+Finalmente, mostramos los datos detectados para todos los municipios
+con alerta:
 
-```{r, warning = FALSE}
-for(i in 1:length(alertas_mun)){
-    print(graf_monitor(monitores_nal[[alertas_mun[i]]]))
-}
+```{r, warning = FALSE, fig.width=8, fig.height=20}
+monitores_alerta <- monitores_nal[alertas_mun]
+graficas <- monitores_alerta %>% map(graf_monitor) 
+marrangeGrob(graficas, nrow = 8, ncol = 4)
 ```
+
 
 # References
 
